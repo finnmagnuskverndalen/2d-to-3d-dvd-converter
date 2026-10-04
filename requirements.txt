@@ -1,0 +1,23 @@
+# Core video / imaging
+opencv-python>=4.9
+numpy>=1.26
+Pillow>=10.0
+ffmpeg-python>=0.2
+imageio-ffmpeg>=0.5
+
+# Deep learning (depth estimation)
+# Install torch separately matching your CUDA version, e.g.:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+torch>=2.2
+torchvision>=0.17
+timm>=1.0            # required by MiDaS / Depth Anything backbones
+
+# UX / config
+tqdm>=4.66
+pyyaml>=6.0
+
+# NOTE: system binaries (not pip-installable) also required:
+#   ffmpeg, ffprobe        — video decode/encode
+#   dvdauthor              — DVD VIDEO_TS authoring
+#   mkisofs / genisoimage  — ISO image creation
+# Debian/Ubuntu:  sudo apt install ffmpeg dvdauthor genisoimage
