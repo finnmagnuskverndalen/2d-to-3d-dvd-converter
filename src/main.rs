@@ -1,10 +1,9 @@
 //! `stereoscopy` CLI entry point.
 //!
-//! Phase 1-5 scope: open the input (file / VIDEO_TS / ISO), print metadata, extract
-//! frames, run depth estimation, generate a packed stereo preview for one frame, and
-//! encode a full stereoscopic video with optional audio re-mux. Phase 6 (DVD
-//! authoring) still exits with "not implemented" — the output path currently
-//! produces .mkv instead.
+//! Phase 1-6 scope: open the input (file / VIDEO_TS / ISO), print metadata, extract
+//! frames, run depth estimation, generate a packed stereo preview for one frame,
+//! encode a full stereoscopic video with optional audio re-mux, and author a
+//! playable 3D DVD ISO when the `--output` extension is `.iso`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -15,9 +14,9 @@ use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use tracing::{error, info, warn};
 
 use stereoscopy::{
-    DepthEstimator, EncodeOpts, PipelineError, StereoGenerator, VideoReader,
+    DepthEstimator, DvdAuthorer, EncodeOpts, PipelineError, StereoGenerator, VideoReader,
     human_duration, init_logging,
-    depth, stereo, video_writer,
+    depth, dvd, stereo, video_writer,
     video_reader::FrameOpts,
 };
 
@@ -37,6 +36,14 @@ enum Device { Auto, Cuda, Cpu }
 #[value(rename_all = "kebab-case")]
 enum Quality { Low, Medium, High }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum DvdRegion { Ntsc, Pal }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum DvdAspect { Standard, Widescreen }
+
 #[derive(Parser, Debug)]
 #[command(
     name = "stereoscopy",
@@ -48,7 +55,8 @@ struct Cli {
     /// Input video file, VIDEO_TS directory, or DVD .iso
     input: PathBuf,
 
-    /// Output path (.mkv / .mp4 for Phase 5; .iso falls back to .mkv until Phase 6)
+    /// Output path. `.iso` triggers DVD authoring (via dvdauthor + mkisofs);
+    /// `.mkv` / `.mp4` produce a stereo video file.
     #[arg(short, long, default_value = "output/output.mkv")]
     output: PathBuf,
 
@@ -118,6 +126,14 @@ struct Cli {
     #[arg(long, default_value_t = 50)]
     max_disparity: i32,
 
+    /// DVD region (applies only when --output is an .iso)
+    #[arg(long, value_enum, default_value_t = DvdRegion::Ntsc)]
+    region: DvdRegion,
+
+    /// DVD aspect ratio (applies only when --output is an .iso)
+    #[arg(long, value_enum, default_value_t = DvdAspect::Widescreen)]
+    dvd_aspect: DvdAspect,
+
     #[arg(short, long)]
     verbose: bool,
 }
@@ -178,6 +194,24 @@ impl Quality {
             Quality::Low    => video_writer::Quality::Low,
             Quality::Medium => video_writer::Quality::Medium,
             Quality::High   => video_writer::Quality::High,
+        }
+    }
+}
+
+impl DvdRegion {
+    fn as_region(self) -> dvd::Region {
+        match self {
+            DvdRegion::Ntsc => dvd::Region::Ntsc,
+            DvdRegion::Pal  => dvd::Region::Pal,
+        }
+    }
+}
+
+impl DvdAspect {
+    fn as_aspect(self) -> dvd::AspectRatio {
+        match self {
+            DvdAspect::Standard   => dvd::AspectRatio::Standard,
+            DvdAspect::Widescreen => dvd::AspectRatio::Widescreen,
         }
     }
 }
@@ -276,7 +310,7 @@ fn run(cli: Cli) -> Result<ExitCode, PipelineError> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    // ---- Full pipeline: encode a stereoscopic video --------------------------
+    // ---- Full pipeline: encode a stereoscopic video (+ optional DVD author) --
 
     if matches!(cli.format, Format::FrameSequential) {
         return Err(PipelineError::NotImplemented(
@@ -284,15 +318,16 @@ fn run(cli: Cli) -> Result<ExitCode, PipelineError> {
         ));
     }
 
-    // Rewrite .iso → .mkv until Phase 6 lands.
-    let final_output = if cli.output.extension().and_then(|e| e.to_str()).map_or(false, |e| e.eq_ignore_ascii_case("iso")) {
-        let rewritten = cli.output.with_extension("mkv");
-        warn!(
-            requested = %cli.output.display(),
-            using = %rewritten.display(),
-            "Phase 5 encodes to .mkv; DVD ISO authoring arrives in Phase 6"
-        );
-        rewritten
+    let wants_dvd = cli.output
+        .extension()
+        .and_then(|e| e.to_str())
+        .map_or(false, |e| e.eq_ignore_ascii_case("iso"));
+
+    // The stereo encode always lands in an intermediate .mkv first. If the user
+    // asked for an .mkv/.mp4 directly, that intermediate IS the final output.
+    // If they asked for .iso, we route through DVD authoring afterwards.
+    let stereo_video_path = if wants_dvd {
+        cache_dir.join("stereo_pre_dvd.mkv")
     } else {
         cli.output.clone()
     };
@@ -301,7 +336,7 @@ fn run(cli: Cli) -> Result<ExitCode, PipelineError> {
     let encode_target: PathBuf = if has_audio {
         cache_dir.join("stereo_video_only.mkv")
     } else {
-        final_output.clone()
+        stereo_video_path.clone()
     };
     std::fs::create_dir_all(&cache_dir)?;
 
@@ -357,13 +392,32 @@ fn run(cli: Cli) -> Result<ExitCode, PipelineError> {
 
     if has_audio {
         info!("re-muxing audio from source");
-        video_writer::remux_audio(&encoded_path, reader.video_path(), &final_output)?;
-        if !cli.keep_intermediate && encoded_path != final_output {
+        video_writer::remux_audio(&encoded_path, reader.video_path(), &stereo_video_path)?;
+        if !cli.keep_intermediate && encoded_path != stereo_video_path {
             let _ = std::fs::remove_file(&encoded_path);
         }
     }
 
-    info!(output = %final_output.display(), "pipeline complete");
+    if wants_dvd {
+        info!(iso = %cli.output.display(), "authoring DVD ISO");
+        let authorer = DvdAuthorer {
+            region: cli.region.as_region(),
+            audio_codec: dvd::AudioCodec::Ac3,
+            video_bitrate: "6000k".into(),
+            audio_bitrate: "192k".into(),
+            aspect: cli.dvd_aspect.as_aspect(),
+        };
+        let dvd_cache = cache_dir.join("dvd");
+        authorer.author(&stereo_video_path, &cli.output, &dvd_cache, has_audio)?;
+        if !cli.keep_intermediate {
+            let _ = std::fs::remove_file(&stereo_video_path);
+            let _ = std::fs::remove_dir_all(&dvd_cache);
+        }
+        info!(output = %cli.output.display(), "DVD ISO ready");
+    } else {
+        info!(output = %stereo_video_path.display(), "pipeline complete");
+    }
+
     Ok(ExitCode::SUCCESS)
 }
 

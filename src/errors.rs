@@ -17,6 +17,9 @@ pub enum PipelineError {
     #[error("ffprobe failed (exit {code}): {stderr}")]
     FfprobeFailed { code: i32, stderr: String },
 
+    #[error("{tool} failed (exit {code}): {stderr}")]
+    ExternalToolFailed { tool: &'static str, code: i32, stderr: String },
+
     #[error("ffprobe produced no video stream in {0}")]
     NoVideoStream(PathBuf),
 

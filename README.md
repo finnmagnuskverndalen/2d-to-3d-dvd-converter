@@ -13,7 +13,11 @@ Convert 2D video sources (video files, VIDEO_TS folders, DVD ISOs) into stereosc
 | 3     | Depth estimation (ONNX Runtime)      | done   |
 | 4     | Stereo view synthesis (SBS/TB/anaglyph) | done |
 | 5     | Video encoding + audio re-mux        | done   |
-| 6     | DVD authoring                        | stub   |
+| 6     | DVD authoring (dvdauthor + mkisofs)  | done   |
+
+All phases from the original plan are implemented. See `RUST_PLAN.md` §Phase 10 for
+the still-open optimisation work (pipeline parallelism via crossbeam channels,
+criterion benches, release packaging).
 
 ## System dependencies
 
@@ -129,13 +133,50 @@ Relevant flags:
 
 | Flag                   | Default            | Effect                                                 |
 |------------------------|--------------------|--------------------------------------------------------|
-| `--output PATH`        | `output/output.mkv`| Final container (.mkv / .mp4). `.iso` falls back to .mkv until Phase 6. |
+| `--output PATH`        | `output/output.mkv`| `.mkv`/`.mp4` → stereo video; `.iso` → authored DVD    |
 | `--frames N`           | all frames         | Encode only the first N source frames                  |
 | `--sample-rate N`      | 1                  | Keep every Nth frame; output FPS is scaled accordingly |
 | `--quality low|medium|high` | high (CRF 18) | H.264 CRF: 28 / 23 / 18                                |
 | `--no-audio`           | off                | Skip the audio re-mux pass                             |
 | `--no-progress`        | off                | Suppress the progress bar (useful for logs / CI)       |
 | `--keep-intermediate`  | off                | Keep the video-only encode after re-muxing audio       |
+
+## DVD authoring
+
+Any `--output` path ending in `.iso` triggers DVD authoring after the stereo
+encode: the stereo video is transcoded to a DVD-spec MPEG-2 program stream
+(720×480 NTSC / 720×576 PAL, AC3 48 kHz audio), `dvdauthor` builds the
+VIDEO_TS tree, and `mkisofs` wraps it into an ISO 9660 image.
+
+```
+# Burn-ready NTSC widescreen DVD, side-by-side stereo
+cargo run --release -- path/to/movie.mp4 --output output/movie.iso
+
+# PAL, red/cyan anaglyph (best choice for DVD — stays at source resolution)
+cargo run --release -- path/to/movie.mp4 \
+    --format anaglyph \
+    --region pal \
+    --output output/movie.iso
+```
+
+Relevant DVD flags:
+
+| Flag               | Default      | Values                       |
+|--------------------|--------------|------------------------------|
+| `--region`         | `ntsc`       | `ntsc` (720×480 @ 29.97) · `pal` (720×576 @ 25) |
+| `--dvd-aspect`     | `widescreen` | `widescreen` (16:9) · `standard` (4:3)          |
+
+### DVD caveats
+
+- DVD is strictly 720×480 (NTSC) or 720×576 (PAL). A side-by-side stereoscopic
+  source gets downscaled; the 3D effect is preserved but at low resolution.
+  For a DVD-only workflow prefer `--format anaglyph` — it keeps full source
+  resolution and plays on any TV with red/cyan glasses.
+- Max image size is 4.7 GB (single-layer) / 8.5 GB (dual-layer). Long encodes
+  may need `--quality low` to fit.
+- The DVD authoring integration test is marked `#[ignore]` so routine
+  `cargo test` runs stay fast. Run the full chain with
+  `cargo test --test dvd_authoring -- --ignored`.
 
 ## Logging
 
