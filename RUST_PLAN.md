@@ -1,9 +1,7 @@
-# 2D → 3D DVD Converter — Rust Edition
+# 2D → 3D DVD Converter — Rust
 
 Native Rust implementation of the stereoscopic converter. Single static binary;
 no runtime dependencies beyond `ffmpeg`, `dvdauthor`, and `mkisofs` on `PATH`.
-
-See the top-level Python plan for the baseline design that this port mirrors.
 
 ---
 
@@ -12,7 +10,7 @@ See the top-level Python plan for the baseline design that this port mirrors.
 ### Project Layout (single-crate first; promote to workspace later if needed)
 
 ```
-rust/
+.
 ├── Cargo.toml
 ├── Cargo.lock
 ├── config.default.toml

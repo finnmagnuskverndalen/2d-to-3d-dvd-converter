@@ -1,21 +1,12 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
+# Rust
+target/
 
 # Project runtime artifacts
-logs/*.log
 .cache/
 output/*
 !output/.gitkeep
-!logs/.gitkeep
-
-# Rust
-target/
-rust/models/*
-!rust/models/.gitkeep
+models/*
+!models/.gitkeep
 
 # OS / editor
 .DS_Store
