@@ -31,12 +31,24 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Phase 3: depth estimation
+# ort 2.0.0-rc.13 uses ndarray 0.17 — keep the two aligned so tensor types unify.
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-rustls"] }
+ndarray = "0.17"
+image = { version = "0.25", default-features = false, features = ["png"] }
+sha2 = "0.10"
+
+[features]
+default = []
+# Opt-in GPU support — requires a matching CUDA runtime on PATH.
+cuda = ["ort/cuda"]
+
 # Platform FFI (statvfs for disk-free; trivial compile cost)
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# Phase 3+ dependencies will be added as their phases land:
-# ort, ndarray, rayon, image, imageproc, indicatif, sha2, figment, toml
+# Phase 4+ dependencies will be added as their phases land:
+# rayon, imageproc, indicatif, figment, toml, ureq
 
 [dev-dependencies]
 tempfile = "3"

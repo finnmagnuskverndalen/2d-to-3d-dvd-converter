@@ -1,8 +1,9 @@
 //! `stereoscopy` CLI entry point.
 //!
-//! Phase 1-2 scope: open the input (file / VIDEO_TS / ISO), print metadata, optionally
-//! dump frames. Everything beyond this exits with a "not implemented" message pointing
-//! at the appropriate phase in `RUST_PLAN.md`.
+//! Phase 1-3 scope: open the input (file / VIDEO_TS / ISO), print metadata, extract
+//! frames, and run depth estimation on a single frame via `--save-depth-preview`.
+//! Phases 4-6 (stereo synthesis, encoding, DVD authoring) still exit with
+//! "not implemented".
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -11,7 +12,8 @@ use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
 
 use stereoscopy::{
-    PipelineError, VideoReader, human_duration, init_logging,
+    DepthEstimator, PipelineError, VideoReader, human_duration, init_logging,
+    depth,
     video_reader::FrameOpts,
 };
 
@@ -81,8 +83,33 @@ struct Cli {
     #[arg(long, value_name = "N")]
     extract_frames: Option<usize>,
 
+    /// Run depth estimation on frame N and write it to output/depth_<N>.png
+    #[arg(long, value_name = "N")]
+    save_depth_preview: Option<u64>,
+
     #[arg(short, long)]
     verbose: bool,
+}
+
+impl DepthModel {
+    fn as_choice(self) -> depth::ModelChoice {
+        match self {
+            DepthModel::DepthAnythingV2Small => depth::ModelChoice::DepthAnythingV2Small,
+            DepthModel::DepthAnythingV2Base  => depth::ModelChoice::DepthAnythingV2Base,
+            DepthModel::DepthAnythingV2Large => depth::ModelChoice::DepthAnythingV2Large,
+            DepthModel::MidasSmall           => depth::ModelChoice::MidasSmall,
+        }
+    }
+}
+
+impl Device {
+    fn as_backend(self) -> depth::Device {
+        match self {
+            Device::Auto => depth::Device::Auto,
+            Device::Cuda => depth::Device::Cuda,
+            Device::Cpu  => depth::Device::Cpu,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -141,7 +168,18 @@ fn run(cli: Cli) -> Result<ExitCode, PipelineError> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    error!("pipeline stages beyond VideoReader are not yet implemented");
-    error!("use --probe-only for metadata or --extract-frames N for a frame dump");
+    if let Some(frame_idx) = cli.save_depth_preview {
+        let frame = reader.get_frame(frame_idx)?;
+        info!(frame = frame_idx, model = ?cli.depth_model, "running depth estimation");
+        let mut estimator = DepthEstimator::load(cli.depth_model.as_choice(), cli.device.as_backend())?;
+        let depth_map = estimator.infer(&frame)?;
+        let out_path = PathBuf::from(format!("output/depth_{frame_idx:06}.png"));
+        depth_map.save_png(&out_path)?;
+        info!(path = %out_path.display(), "wrote depth preview");
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    error!("pipeline stages beyond depth estimation are not yet implemented");
+    error!("use --probe-only, --extract-frames N, or --save-depth-preview N");
     Ok(ExitCode::from(2))
 }

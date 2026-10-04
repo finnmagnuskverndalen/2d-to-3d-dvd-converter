@@ -26,11 +26,20 @@ pub enum PipelineError {
     #[error("stage not yet implemented: {0}")]
     NotImplemented(&'static str),
 
+    #[error("depth model error: {0}")]
+    DepthInference(String),
+
+    #[error("model file missing: {path}. {hint}")]
+    ModelMissing { path: PathBuf, hint: String },
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Image(#[from] image::ImageError),
 }
 
 pub type Result<T> = std::result::Result<T, PipelineError>;

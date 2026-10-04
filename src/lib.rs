@@ -9,6 +9,7 @@ pub mod util;
 pub mod video_reader;
 pub mod video_writer;
 
+pub use depth::{DepthEstimator, DepthMap, Device, ModelChoice};
 pub use errors::{PipelineError, Result};
 pub use util::{VideoMetadata, get_video_metadata, human_duration, init_logging};
 pub use video_reader::{Frame, FrameOpts, VideoReader};
