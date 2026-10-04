@@ -11,7 +11,7 @@ Convert 2D video sources (video files, VIDEO_TS folders, DVD ISOs) into stereosc
 | 1     | Project scaffolding, CLI, logging    | done   |
 | 2     | VideoReader (file / VIDEO_TS / ISO)  | done   |
 | 3     | Depth estimation (ONNX Runtime)      | done   |
-| 4     | Stereo view synthesis                | stub   |
+| 4     | Stereo view synthesis (SBS/TB/anaglyph) | done |
 | 5     | Video encoding                       | stub   |
 | 6     | DVD authoring                        | stub   |
 
@@ -78,6 +78,29 @@ cargo run --features cuda -- path/to/movie.mp4 \
     --device cuda \
     --save-depth-preview 100
 ```
+
+Generate a stereoscopic preview for one frame (runs depth + stereo warp + packing):
+
+```
+# Default side-by-side output at 2x source width
+cargo run -- path/to/movie.mp4 --save-stereo-preview 100
+
+# Red/cyan anaglyph for quick viewing with glasses
+cargo run -- path/to/movie.mp4 --save-stereo-preview 100 --format anaglyph
+
+# Tune the stereo effect
+cargo run -- path/to/movie.mp4 --save-stereo-preview 100 \
+    --baseline 30 --convergence 0.4 --max-disparity 60
+```
+
+Formats (`--format`):
+
+| Value              | Output                              | Preview supported? |
+|--------------------|-------------------------------------|--------------------|
+| `side-by-side`     | `[left | right]`, width × 2         | yes                |
+| `top-bottom`       | `[left / right]`, height × 2        | yes                |
+| `anaglyph`         | Red/cyan single frame               | yes                |
+| `frame-sequential` | Alternating L/R frames in a video   | video only (Phase 5) |
 
 ## Logging
 

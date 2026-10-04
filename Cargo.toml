@@ -38,6 +38,9 @@ ndarray = "0.17"
 image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"
 
+# Phase 4: stereo view synthesis
+rayon = "1.10"
+
 [features]
 default = []
 # Opt-in GPU support — requires a matching CUDA runtime on PATH.

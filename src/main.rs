@@ -1,9 +1,9 @@
 //! `stereoscopy` CLI entry point.
 //!
-//! Phase 1-3 scope: open the input (file / VIDEO_TS / ISO), print metadata, extract
-//! frames, and run depth estimation on a single frame via `--save-depth-preview`.
-//! Phases 4-6 (stereo synthesis, encoding, DVD authoring) still exit with
-//! "not implemented".
+//! Phase 1-4 scope: open the input (file / VIDEO_TS / ISO), print metadata, extract
+//! frames, run depth estimation on a single frame, and generate a packed stereo
+//! preview for one frame. Phases 5-6 (video encoding, DVD authoring) still exit
+//! with "not implemented".
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -12,8 +12,8 @@ use clap::{Parser, ValueEnum};
 use tracing::{error, info, warn};
 
 use stereoscopy::{
-    DepthEstimator, PipelineError, VideoReader, human_duration, init_logging,
-    depth,
+    DepthEstimator, PipelineError, StereoGenerator, VideoReader, human_duration, init_logging,
+    depth, stereo,
     video_reader::FrameOpts,
 };
 
@@ -87,6 +87,20 @@ struct Cli {
     #[arg(long, value_name = "N")]
     save_depth_preview: Option<u64>,
 
+    /// Run depth + stereo on frame N and write the packed result (see --format)
+    /// to output/stereo_<N>_<format>.png
+    #[arg(long, value_name = "N")]
+    save_stereo_preview: Option<u64>,
+
+    /// Convergence plane for stereo synthesis: 0.0 = everything pops out,
+    /// 1.0 = everything sits behind the screen. 0.5 (default) centres the scene.
+    #[arg(long, default_value_t = 0.5)]
+    convergence: f32,
+
+    /// Clamp per-pixel disparity to +/- this many pixels
+    #[arg(long, default_value_t = 50)]
+    max_disparity: i32,
+
     #[arg(short, long)]
     verbose: bool,
 }
@@ -108,6 +122,26 @@ impl Device {
             Device::Auto => depth::Device::Auto,
             Device::Cuda => depth::Device::Cuda,
             Device::Cpu  => depth::Device::Cpu,
+        }
+    }
+}
+
+impl Format {
+    fn as_output(self) -> stereo::OutputFormat {
+        match self {
+            Format::SideBySide      => stereo::OutputFormat::SideBySide,
+            Format::TopBottom       => stereo::OutputFormat::TopBottom,
+            Format::Anaglyph        => stereo::OutputFormat::Anaglyph,
+            Format::FrameSequential => stereo::OutputFormat::FrameSequential,
+        }
+    }
+
+    fn slug(self) -> &'static str {
+        match self {
+            Format::SideBySide      => "sbs",
+            Format::TopBottom       => "tb",
+            Format::Anaglyph        => "anaglyph",
+            Format::FrameSequential => "fs",
         }
     }
 }
@@ -179,7 +213,34 @@ fn run(cli: Cli) -> Result<ExitCode, PipelineError> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    error!("pipeline stages beyond depth estimation are not yet implemented");
-    error!("use --probe-only, --extract-frames N, or --save-depth-preview N");
+    if let Some(frame_idx) = cli.save_stereo_preview {
+        let frame = reader.get_frame(frame_idx)?;
+        info!(frame = frame_idx, model = ?cli.depth_model, "running depth + stereo");
+        let mut estimator = DepthEstimator::load(cli.depth_model.as_choice(), cli.device.as_backend())?;
+        let depth_map = estimator.infer(&frame)?;
+
+        let generator = StereoGenerator {
+            baseline_px: cli.baseline,
+            max_disparity: cli.max_disparity,
+            convergence: cli.convergence.clamp(0.0, 1.0),
+            inpaint: stereo::InpaintMethod::Simple,
+        };
+        let (left, right) = generator.generate_pair(&frame, &depth_map)?;
+        let packed = generator.pack(&left, &right, cli.format.as_output())?;
+        let out_path = PathBuf::from(format!(
+            "output/stereo_{frame_idx:06}_{}.png",
+            cli.format.slug()
+        ));
+        stereo::write_frame_as_png(&packed, &out_path)?;
+        info!(
+            path = %out_path.display(),
+            size = format!("{}x{}", packed.width, packed.height),
+            "wrote stereo preview"
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    error!("pipeline stages beyond stereo preview are not yet implemented");
+    error!("use --probe-only, --extract-frames N, --save-depth-preview N, or --save-stereo-preview N");
     Ok(ExitCode::from(2))
 }
