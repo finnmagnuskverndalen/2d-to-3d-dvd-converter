@@ -14,3 +14,4 @@ pub use errors::{PipelineError, Result};
 pub use stereo::{InpaintMethod, OutputFormat, StereoGenerator};
 pub use util::{VideoMetadata, get_video_metadata, human_duration, init_logging};
 pub use video_reader::{Frame, FrameOpts, VideoReader};
+pub use video_writer::{EncodeOpts, Quality, VideoWriter};

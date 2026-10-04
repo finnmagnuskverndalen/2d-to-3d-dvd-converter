@@ -41,6 +41,9 @@ sha2 = "0.10"
 # Phase 4: stereo view synthesis
 rayon = "1.10"
 
+# Phase 5: video encoding (progress bar for the full pipeline)
+indicatif = "0.17"
+
 [features]
 default = []
 # Opt-in GPU support — requires a matching CUDA runtime on PATH.

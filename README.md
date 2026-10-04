@@ -12,7 +12,7 @@ Convert 2D video sources (video files, VIDEO_TS folders, DVD ISOs) into stereosc
 | 2     | VideoReader (file / VIDEO_TS / ISO)  | done   |
 | 3     | Depth estimation (ONNX Runtime)      | done   |
 | 4     | Stereo view synthesis (SBS/TB/anaglyph) | done |
-| 5     | Video encoding                       | stub   |
+| 5     | Video encoding + audio re-mux        | done   |
 | 6     | DVD authoring                        | stub   |
 
 ## System dependencies
@@ -95,12 +95,47 @@ cargo run -- path/to/movie.mp4 --save-stereo-preview 100 \
 
 Formats (`--format`):
 
-| Value              | Output                              | Preview supported? |
-|--------------------|-------------------------------------|--------------------|
-| `side-by-side`     | `[left | right]`, width × 2         | yes                |
-| `top-bottom`       | `[left / right]`, height × 2        | yes                |
-| `anaglyph`         | Red/cyan single frame               | yes                |
-| `frame-sequential` | Alternating L/R frames in a video   | video only (Phase 5) |
+| Value              | Output                              | Preview supported? | Video supported? |
+|--------------------|-------------------------------------|--------------------|------------------|
+| `side-by-side`     | `[left | right]`, width × 2         | yes                | yes              |
+| `top-bottom`       | `[left / right]`, height × 2        | yes                | yes              |
+| `anaglyph`         | Red/cyan single frame               | yes                | yes              |
+| `frame-sequential` | Alternating L/R frames in a video   | no                 | not yet          |
+
+## Full-pipeline encode
+
+Running without any `--…-preview` or `--probe-only` flag kicks off the full
+stereoscopic encode: every source frame is passed through depth → stereo pair →
+packing → ffmpeg encoder. If the source has audio, it is re-muxed from the
+original into the final container at the end.
+
+```
+# End-to-end: encode the whole movie as side-by-side H.264 with audio
+cargo run --release -- path/to/movie.mp4 --output output/movie_3d.mkv
+
+# Anaglyph for playback on a standard screen, trimmed to the first 240 frames
+cargo run --release -- path/to/movie.mp4 \
+    --format anaglyph \
+    --frames 240 \
+    --output output/preview.mkv
+
+# No audio, lower quality for faster iteration
+cargo run --release -- path/to/movie.mp4 \
+    --quality low --no-audio --no-progress \
+    --output output/draft.mkv
+```
+
+Relevant flags:
+
+| Flag                   | Default            | Effect                                                 |
+|------------------------|--------------------|--------------------------------------------------------|
+| `--output PATH`        | `output/output.mkv`| Final container (.mkv / .mp4). `.iso` falls back to .mkv until Phase 6. |
+| `--frames N`           | all frames         | Encode only the first N source frames                  |
+| `--sample-rate N`      | 1                  | Keep every Nth frame; output FPS is scaled accordingly |
+| `--quality low|medium|high` | high (CRF 18) | H.264 CRF: 28 / 23 / 18                                |
+| `--no-audio`           | off                | Skip the audio re-mux pass                             |
+| `--no-progress`        | off                | Suppress the progress bar (useful for logs / CI)       |
+| `--keep-intermediate`  | off                | Keep the video-only encode after re-muxing audio       |
 
 ## Logging
 
