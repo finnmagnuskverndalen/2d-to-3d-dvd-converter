@@ -1,0 +1,46 @@
+[package]
+name = "stereoscopy"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Convert 2D video / DVDs to stereoscopic 3D with optional DVD authoring"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "stereoscopy"
+path = "src/main.rs"
+
+[lib]
+name = "stereoscopy"
+path = "src/lib.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Serialization (ffprobe JSON, config files)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Platform FFI (statvfs for disk-free; trivial compile cost)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Phase 3+ dependencies will be added as their phases land:
+# ort, ndarray, rayon, image, imageproc, indicatif, sha2, figment, toml
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

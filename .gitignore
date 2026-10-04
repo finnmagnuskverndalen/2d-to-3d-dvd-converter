@@ -12,6 +12,11 @@ output/*
 !output/.gitkeep
 !logs/.gitkeep
 
+# Rust
+target/
+rust/models/*
+!rust/models/.gitkeep
+
 # OS / editor
 .DS_Store
 Thumbs.db

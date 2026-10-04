@@ -1,0 +1,30 @@
+[video]
+output_format = "side-by-side"   # side-by-side | top-bottom | anaglyph | frame-sequential
+codec = "libx264"
+bitrate = "10000k"
+container = "mp4"
+
+[depth]
+model = "depth-anything-v2-small"   # depth-anything-v2-{small,base,large} | midas-small
+device = "auto"                     # auto | cuda | cpu
+batch_size = 4
+temporal_smoothing = true
+smoothing_alpha = 0.5
+
+[stereo]
+baseline_px = 20
+max_disparity = 50
+convergence = 0.5
+inpainting_method = "telea"         # telea | navier-stokes
+
+[dvd]
+region = "NTSC"                     # NTSC (720x480@29.97) | PAL (720x576@25)
+audio_codec = "ac3"                 # ac3 | mp2
+video_bitrate = "6000k"
+audio_bitrate = "192k"
+
+[runtime]
+sample_rate = 1
+chunk_size = 30
+keep_intermediate = false
+min_free_gb = 10
